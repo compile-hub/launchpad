@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<!--
+  My Launchpad — personal link launcher. One file, no network dependencies.
+
+  SECURITY NOTES
+  * The CSP below has NO 'unsafe-inline': each inline script and style block is allowed by its SHA-256 hash.
+    If you edit the JavaScript or CSS in this file, the hashes no longer match and the page will go blank.
+    Regenerate them (or temporarily remove the CSP meta tag) after editing.
+  * A meta-tag CSP cannot set frame-ancestors and GitHub Pages does not allow custom response headers, so the
+    page detects when it is framed by another site and refuses to run (clickjacking defence). If you ever need to
+    embed Launchpad in another page on purpose, remove the data-framed lines from the first script and the CSS.
+
+  DEPLOY: add this file to a GitHub repo, then Settings > Pages > Deploy from branch. It is then served at
+  <your-site>/launchpad.html (name it index.html instead if you want it to be the site's home page). No build step.
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-ajC6Leo7Gy0w+lVle2sBcphbLUQjIlzUmUmNtHCA9vQ=' 'sha256-53cg9oxlUCL/2mql8Gs1GvIzBs3HBbwXI/+EfM1KYCk='; style-src 'sha256-hUkwTKrwdFJx5AiVHY8Ie9sTtyng/uN7AxR4cNfKY1Y='; img-src https: data:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="A fast, private, offline-capable launcher for your everyday links.">
+<title>My Launchpad</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23C99A52'/%3E%3Cpath d='M9 22V10h3v9h6v3z' fill='%2314161A'/%3E%3C/svg%3E">
+<script>
+/* Apply the saved theme before first paint (avoids a flash of the wrong theme). Defaults to dark.
+   Also flags the page when it is inside someone else's frame (clickjacking defence — see the note at the top). */
+(function(){try{var t=localStorage.getItem('launchpad_theme');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){}
+  try{if(window.top!==window.self)document.documentElement.setAttribute('data-framed','1');}catch(e){document.documentElement.setAttribute('data-framed','1');}})();
+</script>
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#0F1115; --surface:#171A1F; --surface-2:#1D2127; --text:#E8E6E1; --text-dim:#9BA0AA; --border:#2A2E35;
+    --accent:#C99A52; --accent-text:#14161A; --live:#4BA36E; --error:#E07A5F;
+    --radius:6px; --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  html[data-theme="light"]{
+    color-scheme:light;
+    --bg:#F7F7F5; --surface:#FFFFFF; --surface-2:#F0EFEC; --text:#14161A; --text-dim:#5B5E66; --border:#E0DFDA;
+    --accent:#94651B; --accent-text:#FFFFFF; --live:#2E7A4B; --error:#B5412A;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--text); font-family:var(--font); font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased; }
+  ::selection{ background:var(--accent); color:var(--accent-text); }
+  button,input,select{ font-family:inherit; font-size:inherit; color:inherit; }
+  button{ cursor:pointer; }
+  a{ color:inherit; text-decoration:none; }
+  [hidden]{ display:none !important; }
+  html{ scroll-padding-top:calc(var(--hdr-h, 0px) + 8px); }   /* focused / scrolled-to cards never hide under the sticky header */
+  html[data-framed] body > *{ display:none !important; }
+  html[data-framed] body::before{ content:"For your security, My Launchpad does not run inside another page. Open it directly in a browser tab."; display:block; padding:24px; text-align:center; }
+  .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+  .icon{ width:16px; height:16px; display:inline-flex; flex-shrink:0; }
+  .icon svg{ width:100%; height:100%; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
+
+  .btn,.icon-btn,.chip{ transition:border-color .12s ease, background-color .12s ease; }
+  .btn{ height:36px; padding:0 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface); display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+  .btn:hover,.icon-btn:hover{ border-color:var(--accent); }
+  .btn-primary{ background:var(--accent); color:var(--accent-text); border-color:var(--accent); font-weight:600; }
+  .icon-btn{ display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+  .icon-btn[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:var(--accent-text); }
+
+  /* ---------- Sticky header: search, chips and pinned row stack naturally (no magic offsets) ---------- */
+  header.topbar{ position:sticky; top:0; z-index:30; background:var(--bg); border-bottom:1px solid var(--border); transition:top .12s ease; }
+  .topbar-row{ display:flex; align-items:center; gap:8px; padding:10px 16px 8px; max-width:1400px; margin:0 auto; }
+  .search-wrap{ position:relative; flex:1; min-width:0; }
+  .search-wrap .icon{ position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--text-dim); pointer-events:none; }
+  #search-input{ width:100%; height:40px; padding:0 54px 0 34px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface); color:var(--text); }
+  #search-input::placeholder{ color:var(--text-dim); }
+  .kbd-hint{ position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--text-dim); border:1px solid var(--border); border-radius:4px; padding:1px 6px; pointer-events:none; }
+  @media (max-width:640px){ .kbd-hint{ display:none; } #search-input{ padding-right:12px; } }
+  /* Phones: categories sit on top and slide away while you scroll down (and return when you scroll up), so only
+     search + pinned stay pinned while reading. Only the sticky offset changes, so the page never jumps. */
+  /* (flex-column children must be told to fill the width: auto side margins would otherwise shrink-wrap them) */
+  @media (max-width:640px){ header.topbar{ display:flex; flex-direction:column; } header.topbar > *{ width:100%; margin-left:0; margin-right:0; } .chips-row{ order:-1; padding-top:6px; } header.topbar.chips-away{ top:calc(var(--chips-h, 52px) * -1); } }
+  @media (max-width:640px){ .topbar-row{ padding:6px 12px 4px; } .chips-row{ padding:0 12px 4px; } .pinned-wrap{ padding:0 12px 6px; } }  /* slimmer sticky header on phones */
+
+  .chips-row{ display:flex; gap:8px; padding:0 16px 8px; max-width:1400px; margin:0 auto; overflow-x:auto; scrollbar-width:none; }
+  .chips-row::-webkit-scrollbar{ display:none; }
+  .chip{ flex-shrink:0; height:32px; padding:0 14px; border-radius:999px; border:1px solid var(--border); background:var(--surface); white-space:nowrap; display:flex; align-items:center; gap:6px; }
+  .chip:hover{ border-color:var(--accent); }
+  .chip[aria-pressed="true"]{ background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+  .chip .n{ font-size:11px; color:var(--text-dim); }
+  .chip[aria-pressed="true"] .n{ color:inherit; }
+
+  .pinned-wrap{ display:flex; align-items:center; gap:8px; max-width:1400px; margin:0 auto; padding:0 16px 10px; }
+  .pinned-wrap > .icon{ color:var(--accent); }
+  .pinned-scroll{ display:flex; gap:8px; overflow-x:auto; flex:1; min-width:0; padding-bottom:2px; scrollbar-width:thin; }
+  .pinned-card{ flex-shrink:0; width:170px; display:flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); min-height:44px; }
+  .pinned-card:hover{ border-color:var(--accent); }
+  .pinned-card .title{ font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+
+  main{ max-width:1400px; margin:0 auto; padding:16px; }
+  .category{ margin-bottom:22px; }
+  .category-head{ margin:0; }
+  .category-toggle{ display:flex; align-items:center; gap:8px; padding:6px 2px; min-height:32px; border:0; background:none; font-weight:600; font-size:15px; width:auto; }
+  .category-count{ font-size:12px; font-weight:400; color:var(--text-dim); }
+  .category-toggle .chevron{ transition:transform .12s ease; color:var(--text-dim); }
+  .category.collapsed .chevron{ transform:rotate(-90deg); }
+  .category.collapsed .grid, .category.collapsed .add-here{ display:none; }
+
+  .grid{ display:grid; gap:10px; grid-template-columns:repeat(6,minmax(0,1fr)); margin-top:8px; }
+  @media (max-width:1200px){ .grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  @media (max-width:900px){ .grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  @media (max-width:640px){ .grid{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:380px){ .grid{ grid-template-columns:1fr; } }
+
+  .card{ position:relative; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); min-height:48px; transition:border-color .12s ease; }
+  .card:hover,.card:focus-within{ border-color:var(--accent); }
+  .card.top-hit{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .card.dragging{ opacity:.45; }
+  .card.drop-target{ border-color:var(--accent); border-style:dashed; }
+  .card-link{ display:flex; align-items:center; gap:10px; padding:10px; min-height:46px; border-radius:var(--radius); }
+  .card-link:focus-visible{ outline-offset:-2px; }
+  .fav{ width:22px; height:22px; border-radius:5px; flex-shrink:0; object-fit:contain; }
+  .fav.loaded{ background:#fff; padding:2px; }  /* light backing once loaded: dark logos stay visible in dark mode */
+  .fav-fallback{ width:22px; height:22px; border-radius:5px; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700; }
+  .card .body{ min-width:0; flex:1; display:block; }
+  .card .title{ display:block; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .card .meta{ display:block; font-size:11px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* Card tools: overlay on hover/focus for mouse users */
+  .card-tools{ position:absolute; top:4px; right:4px; display:flex; gap:3px; padding:2px; border-radius:6px; background:var(--surface); opacity:0; pointer-events:none; transition:opacity .12s ease; }
+  .card:hover .card-tools,.card:focus-within .card-tools{ opacity:1; pointer-events:auto; }
+  .tool{ width:24px; height:24px; border-radius:4px; border:1px solid var(--border); background:var(--surface); display:flex; align-items:center; justify-content:center; }
+  .tool:hover{ border-color:var(--accent); }
+  .tool .icon{ width:13px; height:13px; }
+  .tool[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:var(--accent-text); }
+  .tool[data-act="more"]{ display:none; }
+
+  /* Touch: every control is >= 44px. Tools live in a row that opens under the card. */
+  @media (pointer:coarse){
+    .btn,.icon-btn{ min-height:44px; min-width:44px; }
+    .chip{ min-height:44px; }
+    .category-toggle{ min-height:44px; }
+    .card{ display:flex; flex-wrap:wrap; }
+    .card-link{ flex:1; min-width:0; align-self:stretch; }
+    .tool[data-act="more"]{ display:flex; width:44px; height:44px; border:0; background:none; }
+    .card-tools{ position:static; opacity:1; pointer-events:auto; display:none; width:100%; justify-content:space-around; padding:4px; border-top:1px solid var(--border); border-radius:0; }
+    .card.tools-open .card-tools{ display:flex; }
+    .tool{ width:44px; height:44px; }
+    .tool .icon{ width:16px; height:16px; }
+    #search-input,.field input,.field select{ font-size:16px; min-height:44px; }
+  }
+
+  .add-here{ margin-top:8px; width:100%; min-height:44px; border:1px dashed var(--border); border-radius:var(--radius); background:none; color:var(--text-dim); display:flex; align-items:center; justify-content:center; gap:6px; }
+  .add-here:hover{ border-color:var(--accent); color:var(--text); }
+  .empty-state{ border:1px dashed var(--border); border-radius:var(--radius); padding:28px 16px; text-align:center; color:var(--text-dim); }
+  .empty-state strong{ color:var(--text); display:block; margin-bottom:2px; }
+  .empty-state .actions{ margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+
+  footer{ max-width:1400px; margin:0 auto; padding:8px 16px 32px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .pref{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); min-height:36px; }
+  .pref input{ width:16px; height:16px; accent-color:var(--accent); }
+  @media (pointer:coarse){ .pref{ min-height:44px; } .pref input{ width:22px; height:22px; } }
+
+  /* ---------- Dialogs (native <dialog>: focus trap, Esc, inert background come for free) ---------- */
+  dialog{ background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px; width:calc(100% - 32px); max-width:440px; padding:0; margin:6vh auto auto; overflow:hidden; }
+  .dlg-body{ padding:18px; }
+  dialog::backdrop{ background:rgba(0,0,0,.5); }
+  dialog h3{ margin:0 0 14px; font-size:16px; }
+  dialog p{ margin:0 0 10px; color:var(--text-dim); }
+  .field{ margin-bottom:12px; }
+  .field label{ display:block; font-size:12px; color:var(--text-dim); margin-bottom:4px; }
+  .field input,.field select{ width:100%; height:38px; padding:0 10px; border-radius:var(--radius); border:1px solid var(--border); background:var(--bg); color:var(--text); }
+  .field .error-msg{ font-size:12px; color:var(--error); margin-top:4px; display:none; }
+  .field.invalid input{ border-color:var(--error); }
+  .field.invalid .error-msg{ display:block; }
+  .modal-actions{ display:flex; justify-content:space-between; gap:8px; margin-top:16px; flex-wrap:wrap; }
+  .modal-actions .right{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* ---------- Toasts ---------- */
+  #toast-container{ position:fixed; bottom:calc(16px + env(safe-area-inset-bottom,0px)); right:16px; left:16px; margin-left:auto; z-index:200; display:flex; flex-direction:column; gap:8px; max-width:360px; }
+  .toast{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:var(--radius); background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--error); font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,.25); }
+  .toast.toast-success{ border-left-color:var(--live); }
+  .toast .msg{ flex:1; min-width:0; overflow-wrap:anywhere; }
+  .toast .toast-btn{ border:0; background:none; color:var(--accent); font-weight:600; padding:6px 8px; min-height:32px; }
+  .noscript{ padding:24px; text-align:center; }
+</style>
+</head>
+<body>
+
+<noscript><p class="noscript">Launchpad needs JavaScript to run. Nothing is sent anywhere — your links stay in this browser.</p></noscript>
+
+<header class="topbar">
+  <h1 class="visually-hidden">My Launchpad</h1>
+  <div class="topbar-row">
+    <div class="search-wrap">
+      <span class="icon" data-icon="search"></span>
+      <input id="search-input" type="search" placeholder="Search links, tags, categories…" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search your links">
+      <span class="kbd-hint" aria-hidden="true">/ or ⌘K</span>
+    </div>
+    <button class="icon-btn" id="pinned-only-toggle" type="button" aria-pressed="false" aria-label="Show pinned links only" title="Show pinned only"><span class="icon" data-icon="pin"></span></button>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme"></button>
+    <button class="btn btn-primary" id="add-link-btn" type="button"><span class="icon" data-icon="plus"></span> Add</button>
+  </div>
+  <nav class="chips-row" id="chips-row" aria-label="Categories"></nav>
+  <section class="pinned-wrap" id="pinned-wrap" aria-label="Pinned links" hidden>
+    <span class="icon" data-icon="pin" aria-hidden="true"></span>
+    <div class="pinned-scroll" id="pinned-scroll" data-container="pinned"></div>
+  </section>
+</header>
+
+<main id="main-content" tabindex="-1"></main>
+<div class="visually-hidden" id="sr-status" aria-live="polite"></div>
+
+<footer>
+  <button class="btn" id="export-btn" type="button"><span class="icon" data-icon="download"></span> Export Config (JSON)</button>
+  <button class="btn" id="import-btn" type="button"><span class="icon" data-icon="upload"></span> Import Config (JSON)</button>
+  <input type="file" id="import-file" accept="application/json,.json" hidden>
+  <p class="pref" id="privacy-note">Site icons load straight from each site you saved. Nothing is sent to anyone else, and your links never leave this browser.</p>
+</footer>
+
+<dialog id="link-dialog" aria-labelledby="modal-title">
+  <form id="link-form" class="dlg-body" novalidate>
+    <h3 id="modal-title">Add link</h3>
+    <div class="field" id="field-title">
+      <label for="input-title">Title</label>
+      <input id="input-title" type="text" maxlength="80" autocomplete="off">
+      <div class="error-msg">Enter a title.</div>
+    </div>
+    <div class="field" id="field-url">
+      <label for="input-url">URL</label>
+      <input id="input-url" type="text" inputmode="url" maxlength="2048" placeholder="https://example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="error-msg">Enter a valid web address (http or https).</div>
+    </div>
+    <div class="field" id="field-category">
+      <label for="input-category">Category</label>
+      <select id="input-category"></select>
+    </div>
+    <div class="field" id="field-new-category" hidden>
+      <label for="input-new-category">New category name</label>
+      <input id="input-new-category" type="text" maxlength="40" autocomplete="off">
+      <div class="error-msg">Enter a name for the new category.</div>
+    </div>
+    <div class="field" id="field-tags">
+      <label for="input-tags">Tags (comma separated, optional)</label>
+      <input id="input-tags" type="text" placeholder="finance, daily" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="delete-link-btn" hidden><span class="icon" data-icon="trash-2"></span> Delete</button>
+      <div class="right">
+        <button type="button" class="btn" id="cancel-modal-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="import-dialog" aria-labelledby="import-title">
+  <div class="dlg-body">
+    <h3 id="import-title">Import links</h3>
+    <p id="import-summary"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="import-cancel">Cancel</button>
+      <div class="right">
+        <button type="button" class="btn" id="import-merge">Merge (skip duplicates)</button>
+        <button type="button" class="btn btn-primary" id="import-replace">Replace all</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<div id="toast-container" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+if(document.documentElement.hasAttribute('data-framed')) return;   // never load data or draw UI inside a foreign frame
+
+/* ============ Icons (inline Lucide paths — only the ones used) ============ */
+const ICONS = {
+  'search':'<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/>',
+  'sun':'<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  'moon':'<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>',
+  'pin':'<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
+  'pencil':'<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+  'trash-2':'<path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  'plus':'<path d="M5 12h14"/><path d="M12 5v14"/>',
+  'chevron-down':'<path d="m6 9 6 6 6-6"/>',
+  'arrow-up':'<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  'arrow-down':'<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+  'ellipsis':'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  'download':'<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+  'upload':'<path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+};
+function iconSvg(name){
+  return ICONS[name] ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + ICONS[name] + '</svg>' : '';
+}
+function icon(name){ const s = document.createElement('span'); s.className = 'icon'; s.innerHTML = iconSvg(name); return s; }
+function paintIcons(root){
+  root.querySelectorAll('[data-icon]').forEach(el => { if(!el.dataset.painted){ el.innerHTML = iconSvg(el.dataset.icon); el.dataset.painted = '1'; } });
+}
+
+/* ============ Safe storage: a blocked/full/private-mode storage must never break the page ============ */
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k, v){ try{ localStorage.setItem(k, v); return true; }catch(e){ return false; } },
+};
+
+/* ============ Constants ============ */
+const STORAGE_KEY = 'launchpad_v1_data';
+const BACKUP_KEY = 'launchpad_v1_data_unreadable';
+const THEME_KEY = 'launchpad_theme';
+const COLLAPSED_KEY = 'launchpad_collapsed';
+const DEFAULT_CATEGORIES = ['Entertainment','Developer & Tools','Shopping & Jewelry','Career & Professional'];
+const CUSTOM_GROUP = 'Custom Links';
+const LIMITS = { links:5000, title:80, category:40, tag:30, tags:20, url:2048, importBytes:5*1024*1024 };
+const STARTER_LINKS = [
+  ['YouTube','https://www.youtube.com','Entertainment'], ['Netflix','https://www.netflix.com','Entertainment'], ['Spotify','https://open.spotify.com','Entertainment'],
+  ['GitHub','https://github.com','Developer & Tools'], ['MDN Web Docs','https://developer.mozilla.org','Developer & Tools'], ['Stack Overflow','https://stackoverflow.com','Developer & Tools'], ['Can I use','https://caniuse.com','Developer & Tools'],
+  ['Amazon','https://www.amazon.com','Shopping & Jewelry'], ['Etsy','https://www.etsy.com','Shopping & Jewelry'], ['eBay','https://www.ebay.com','Shopping & Jewelry'],
+  ['LinkedIn','https://www.linkedin.com','Career & Professional'], ['Indeed','https://www.indeed.com','Career & Professional'], ['Glassdoor','https://www.glassdoor.com','Career & Professional'],
+];
+
+/* ============ Text / URL hygiene ============ */
+// Strips control characters and bidi overrides (used to spoof titles); keeps emoji joiners.
+const CONTROL_RE = /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+function cleanText(s, max){ return String(s == null ? '' : s).replace(/[\t\n\r\f\v\u2028\u2029]+/g, ' ').replace(CONTROL_RE, '').replace(/\s+/g, ' ').trim().slice(0, max); }   // a line break becomes a space, never glues words
+
+/** Returns a safe absolute http(s) URL string, or null. Rejects javascript:, data:, mailto:, credentials-in-URL, junk. */
+function normalizeUrl(raw){
+  let v = String(raw == null ? '' : raw).trim();
+  if(!v || v.length > LIMITS.url) return null;
+  const hasHttp = /^https?:\/\//i.test(v);
+  const looksLikeScheme = /^[a-z][a-z0-9+.\-]*:/i.test(v);
+  const looksLikeHostPort = /^[^\s/:@]+:\d+(?:[/?#]|$)/.test(v);
+  if(looksLikeScheme && !hasHttp && !looksLikeHostPort) return null;     // javascript:, data:, mailto:, file: …
+  if(!hasHttp) v = 'https://' + v;
+  let u;
+  try{ u = new URL(v); }catch(e){ return null; }
+  if(u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  if(u.username || u.password) return null;                                 // https://trusted.com@evil.com tricks + secrets in storage
+  const host = u.hostname;
+  if(!host) return null;
+  if(!hasHttp && !host.includes('.') && host !== 'localhost' && !host.startsWith('[') && !u.port) return null; // "asdf" is not a site
+  return u.href;
+}
+function hostOf(url){ try{ return new URL(url).hostname.replace(/^www\./, ''); }catch(e){ return ''; } }
+function urlKey(url){ try{ const u = new URL(url); return u.host.toLowerCase() + u.pathname.replace(/\/+$/, '') + u.search; }catch(e){ return url; } }
+function isPrivateHost(h){
+  h = String(h || '').toLowerCase();
+  return !h || h === 'localhost' || !h.includes('.') || h.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(h) ||
+         /\.(local|localhost|internal|lan|home|corp|intranet|test|invalid|example)$/.test(h);
+}
+
+/* ============ Data model & validation (applied to storage, imports — never trust either) ============ */
+function uid(){ return 'l_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
+
+function sanitizeTags(raw){
+  const list = Array.isArray(raw) ? raw : (typeof raw === 'string' ? raw.split(',') : []);
+  const seen = new Set(), out = [];
+  for(const t of list){
+    const c = cleanText(t, LIMITS.tag);
+    if(c && !seen.has(c.toLowerCase())){ seen.add(c.toLowerCase()); out.push(c); }
+    if(out.length >= LIMITS.tags) break;
+  }
+  return out;
+}
+function canonicalCategory(name){
+  const c = cleanText(name, LIMITS.category) || CUSTOM_GROUP;
+  return DEFAULT_CATEGORIES.find(d => d.toLowerCase() === c.toLowerCase()) || c;
+}
+function sanitizeLink(raw, index, usedIds){
+  if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const url = normalizeUrl(raw.url);
+  if(!url) return null;
+  const title = cleanText(raw.title, LIMITS.title) || hostOf(url) || 'Untitled';
+  let id = typeof raw.id === 'string' && /^[\w-]{1,64}$/.test(raw.id) ? raw.id : '';
+  if(!id || usedIds.has(id)) id = uid() + index;
+  usedIds.add(id);
+  const num = v => (typeof v === 'number' && isFinite(v)) ? v : null;
+  return { id, title, url, category: canonicalCategory(raw.category), tags: sanitizeTags(raw.tags),
+           pinned: raw.pinned === true, order: num(raw.order) ?? index, pinOrder: num(raw.pinOrder) ?? index };
+}
+function sanitizeLinks(list){
+  const used = new Set(), links = [];
+  let dropped = 0;
+  (Array.isArray(list) ? list : []).slice(0, LIMITS.links).forEach((raw, i) => {
+    const l = sanitizeLink(raw, i, used);
+    if(l) links.push(l); else dropped++;
+  });
+  if(Array.isArray(list) && list.length > LIMITS.links) dropped += list.length - LIMITS.links;
+  return { links: normalizeOrders(links), dropped };
+}
+/** Re-numbers order / pinOrder as unique 0..n-1 integers while keeping relative order. */
+function normalizeOrders(links){
+  links.map((l, i) => [l, i]).sort((a, b) => (a[0].order - b[0].order) || (a[1] - b[1])).forEach(([l], i) => { l.order = i; });
+  links.map((l, i) => [l, i]).filter(([l]) => l.pinned).sort((a, b) => (a[0].pinOrder - b[0].pinOrder) || (a[1] - b[1])).forEach(([l], i) => { l.pinOrder = i; });
+  links.filter(l => !l.pinned).forEach(l => { l.pinOrder = 0; });
+  return links;
+}
+
+/* ============ State ============ */
+const uiState = { search:'', activeCategory:'All', pinnedOnly:false, collapsed:loadCollapsed(), editingId:null, touchOpenId:null };
+let state = loadState();
+const favCache = new Map(); // host -> 'letter' once a site's own icon has failed (so we stop re-requesting a 404)
+let lastDeleted = null;
+let pendingImport = null;
+
+function loadState(){
+  const raw = store.get(STORAGE_KEY);
+  if(!raw) return { version:1, links:[] };
+  try{
+    const parsed = JSON.parse(raw);
+    const { links, dropped } = sanitizeLinks(parsed && !Array.isArray(parsed) ? parsed.links : parsed);
+    if(dropped){ keepBackup(raw); queueMicrotask(() => toast(`${dropped} saved link(s) were invalid and were skipped. A copy of the original data was kept in this browser.`, 'error')); }
+    return { version:1, links };
+  }catch(e){
+    keepBackup(raw);
+    queueMicrotask(() => toast('Saved links could not be read, so Launchpad started empty. A copy of the unreadable data was kept in this browser.', 'error'));
+    return { version:1, links:[] };
+  }
+}
+function keepBackup(raw){ if(store.get(BACKUP_KEY) == null) store.set(BACKUP_KEY, raw); }
+let saveWarned = false;
+function saveState(){
+  if(!store.set(STORAGE_KEY, JSON.stringify(state)) && !saveWarned){
+    saveWarned = true;
+    toast('Could not save — browser storage may be full or blocked. Export your config to keep your changes.', 'error');
+  }
+}
+function loadCollapsed(){
+  const out = Object.create(null);
+  try{ const p = JSON.parse(store.get(COLLAPSED_KEY) || '{}'); if(p && typeof p === 'object') for(const k of Object.keys(p)) if(p[k] === true) out[k] = true; }catch(e){}
+  return out;
+}
+function saveCollapsed(){ store.set(COLLAPSED_KEY, JSON.stringify(uiState.collapsed)); }
+
+const byOrder = (a, b) => a.order - b.order;
+const nextOrder = () => state.links.reduce((m, l) => Math.max(m, l.order), -1) + 1;
+const nextPinOrder = () => state.links.reduce((m, l) => l.pinned ? Math.max(m, l.pinOrder) : m, -1) + 1;
+const isCustomCategory = c => !DEFAULT_CATEGORIES.includes(c);
+function allCategories(){
+  const set = new Set(DEFAULT_CATEGORIES);
+  state.links.forEach(l => set.add(l.category));
+  return [...set];
+}
+
+/* ============ Theme ============ */
+function currentTheme(){ return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; }
+function paintThemeButton(){
+  const btn = document.getElementById('theme-toggle');
+  const t = currentTheme();
+  btn.innerHTML = ''; btn.appendChild(icon(t === 'dark' ? 'moon' : 'sun'));
+  btn.setAttribute('aria-label', t === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+  btn.title = btn.getAttribute('aria-label');
+}
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  store.set(THEME_KEY, next);
+  paintThemeButton();
+});
+
+/* ============ Toasts (with optional action, e.g. Undo) ============ */
+function toast(message, type, opts){
+  opts = opts || {};
+  const host = document.getElementById('toast-container');
+  while(host.children.length >= 4) host.firstChild.remove();
+  const el = document.createElement('div');
+  el.className = 'toast' + (type === 'success' ? ' toast-success' : '');
+  el.setAttribute('role', type === 'success' ? 'status' : 'alert');
+  const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = message; el.appendChild(msg);
+  if(opts.action){
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-btn'; b.textContent = opts.action.label;
+    b.addEventListener('click', () => { opts.action.run(); el.remove(); });
+    el.appendChild(b);
+  }
+  host.appendChild(el);
+  setTimeout(() => el.remove(), opts.duration || (opts.action ? 8000 : 4500));
+}
+
+/* ============ Favicons: the site's own /favicon.ico → coloured letter badge. Never throws, never contacts anyone else. ============ */
+function letterBadge(link){
+  const host = hostOf(link.url);
+  const el = document.createElement('div');
+  el.className = 'fav-fallback';
+  el.textContent = (link.title || host || '?').trim().charAt(0).toUpperCase() || '?';
+  let h = 0; for(const ch of host) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  el.style.background = `hsl(${h} 38% 36%)`;
+  el.setAttribute('aria-hidden', 'true');
+  return el;
+}
+function faviconEl(link){
+  let host = '';
+  try{ host = new URL(link.url).host; }catch(e){}
+  if(!host || favCache.get(host) === 'letter' || (link.url.startsWith('http:') && isPrivateHost(hostOf(link.url)))) return letterBadge(link);   // never probe a LAN/intranet address
+  const img = new Image(22, 22);
+  img.className = 'fav'; img.alt = ''; img.decoding = 'async'; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+  img.addEventListener('load', () => img.classList.add('loaded'));
+  img.addEventListener('error', () => { favCache.set(host, 'letter'); if(img.isConnected) img.replaceWith(letterBadge(link)); });
+  img.src = 'https://' + host + '/favicon.ico';
+  return img;
+}
+
+/* ============ Search: every word must match; ranks title > tag > domain > category > URL; subsequence fallback for typos ============ */
+function tokenScore(tok, link, hay){
+  const title = link.title.toLowerCase();
+  if(title.startsWith(tok)) return 300;
+  if(title.split(/[\s\-_.\/]+/).some(w => w.startsWith(tok))) return 220;
+  if(title.includes(tok)) return 160;
+  if((link.tags || []).some(t => t.toLowerCase().includes(tok))) return 130;
+  if(hostOf(link.url).includes(tok)) return 110;
+  if(link.category.toLowerCase().includes(tok)) return 60;
+  if(hay.includes(tok)) return 40;
+  if(tok.length >= 3){ let i = 0; for(const ch of tok){ i = title.indexOf(ch, i); if(i === -1) return -1; i++; } return 10; }
+  return -1;
+}
+function searchResults(query){
+  const toks = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if(!toks.length) return [];
+  const out = [];
+  for(const l of state.links){
+    const hay = (l.url + ' ' + l.category + ' ' + (l.tags || []).join(' ')).toLowerCase();
+    let total = 0;
+    for(const t of toks){ const s = tokenScore(t, l, hay); if(s < 0){ total = -1; break; } total += s; }
+    if(total >= 0) out.push({ l, total });
+  }
+  return out.sort((a, b) => b.total - a.total || a.l.order - b.l.order).map(r => r.l);
+}
+
+/* ============ DOM helpers ============ */
+function h(tag, attrs, ...kids){
+  const e = document.createElement(tag);
+  if(attrs) for(const [k, v] of Object.entries(attrs)){
+    if(v == null || v === false) continue;
+    if(k === 'class') e.className = v; else if(k === 'text') e.textContent = v; else e.setAttribute(k, v === true ? '' : String(v));
+  }
+  kids.flat().forEach(k => { if(k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k))); });
+  return e;
+}
+
+/* ============ Rendering ============ */
+let renderQueued = false, focusAfter = null, isCoarse = matchMedia('(pointer: coarse)').matches;
+function render(opts){
+  if(opts && opts.focusId) focusAfter = opts.focusId;
+  if(renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; renderNow(); });
+}
+function renderNow(){
+  isCoarse = matchMedia('(pointer: coarse)').matches;
+  try{
+    if(uiState.activeCategory !== 'All' && !allCategories().includes(uiState.activeCategory)) uiState.activeCategory = 'All';
+    renderChips(); renderPinned(); renderMain();
+    if(focusAfter){
+      const el = document.querySelector('#main-content [data-id="' + focusAfter + '"] .card-link, #pinned-scroll [data-id="' + focusAfter + '"]');
+      if(el) el.focus();
+      focusAfter = null;
+    }
+  }catch(err){
+    console.error(err);
+    const main = document.getElementById('main-content');
+    main.textContent = '';
+    main.appendChild(h('div', { class:'empty-state' }, h('strong', { text:'Something went wrong while drawing your links.' }),
+      h('div', { text:'Your data is safe. Reload the page, or export a backup first.' })));
+  }
+}
+
+function renderChips(){
+  const row = document.getElementById('chips-row');
+  row.textContent = '';
+  const counts = new Map();
+  state.links.forEach(l => counts.set(l.category, (counts.get(l.category) || 0) + 1));
+  ['All', ...allCategories()].forEach(cat => {
+    const n = cat === 'All' ? state.links.length : (counts.get(cat) || 0);
+    const b = h('button', { class:'chip', type:'button', 'data-act':'chip', 'data-cat':cat, 'aria-pressed':String(uiState.activeCategory === cat) }, cat, h('span', { class:'n', text:String(n) }));
+    row.appendChild(b);
+  });
+  measureChips();
+}
+function measureHeader(){ const hd = document.querySelector('header.topbar'); if(hd) document.documentElement.style.setProperty('--hdr-h', hd.offsetHeight + 'px'); }
+if(window.ResizeObserver) new ResizeObserver(measureHeader).observe(document.querySelector('header.topbar'));
+function measureChips(){ const r = $('chips-row'); if(r && r.offsetHeight) document.documentElement.style.setProperty('--chips-h', r.offsetHeight + 'px'); }
+window.addEventListener('resize', measureChips);
+let lastY = 0, scrollTick = false;
+window.addEventListener('scroll', () => {
+  if(scrollTick) return; scrollTick = true;
+  requestAnimationFrame(() => {
+    scrollTick = false;
+    const y = window.scrollY, hdr = document.querySelector('header.topbar');
+    if(y > lastY + 6 && y > 80 && document.activeElement !== searchInput) hdr.classList.add('chips-away');
+    else if(y < lastY - 6 || y <= 40) hdr.classList.remove('chips-away');
+    lastY = y;
+  });
+}, { passive:true });
+
+function canReorderHere(){ return !uiState.search.trim(); }
+
+function renderPinned(){
+  const wrap = document.getElementById('pinned-wrap');
+  const scroll = document.getElementById('pinned-scroll');
+  const pinned = state.links.filter(l => l.pinned).sort((a, b) => a.pinOrder - b.pinOrder);
+  scroll.textContent = '';
+  if(!pinned.length){ wrap.hidden = true; scroll.dataset.ids = ''; return; }
+  wrap.hidden = false;
+  scroll.dataset.ids = pinned.map(l => l.id).join(',');
+  const drag = !isCoarse;
+  pinned.forEach(l => {
+    scroll.appendChild(h('a', { class:'pinned-card', href:l.url, target:'_blank', rel:'noopener noreferrer', 'data-id':l.id, 'data-container':'pinned',
+      draggable: drag ? 'true' : null, title:l.title }, faviconEl(l), h('span', { class:'title', text:l.title })));
+  });
+}
+
+function renderMain(){
+  const main = document.getElementById('main-content');
+  main.textContent = '';
+  const q = uiState.search.trim();
+  const status = document.getElementById('sr-status');
+
+  if(q){
+    const results = searchResults(q);
+    status.textContent = results.length + (results.length === 1 ? ' result' : ' results');
+    if(!results.length){
+      main.appendChild(emptyState('No matches', `Nothing matches “${q}”. Try fewer or different words.`, []));
+      return;
+    }
+    const grid = h('div', { class:'grid' });
+    results.forEach((l, i) => grid.appendChild(buildCard(l, { container:'search', showCategory:true, topHit:i === 0, reorder:false })));
+    main.appendChild(h('section', { class:'category' }, h('h2', { class:'category-head' }, h('span', { class:'category-toggle' }, 'Search results ', h('span', { class:'category-count', text:String(results.length) }))), grid));
+    return;
+  }
+  status.textContent = '';
+
+  if(!state.links.length){   // first run: onboarding banner, then the pre-configured sections below it
+    const banner = emptyState('No links yet', 'Add the sites you open every day, or start with a few suggestions.', [
+      { label:'Add link', primary:true, act:'add' }, { label:'Add starter links', act:'starter' }]);
+    banner.style.marginBottom = '22px';
+    main.appendChild(banner);
+  }
+
+  const source = uiState.pinnedOnly ? state.links.filter(l => l.pinned) : state.links;
+  const sections = [];
+  if(uiState.activeCategory === 'All'){
+    DEFAULT_CATEGORIES.forEach(cat => {
+      const items = source.filter(l => l.category === cat);
+      if(items.length || !uiState.pinnedOnly) sections.push({ key:cat, title:cat, items, addCat:cat });
+    });
+    const custom = source.filter(l => isCustomCategory(l.category));
+    if(custom.length) sections.push({ key:CUSTOM_GROUP, title:CUSTOM_GROUP, items:custom, addCat:null, showCategory:true });
+  }else{
+    const cat = uiState.activeCategory;
+    sections.push({ key:cat, title:cat, items:source.filter(l => l.category === cat), addCat:cat });
+  }
+  if(uiState.pinnedOnly && sections.every(s => !s.items.length)){
+    main.appendChild(emptyState('Nothing pinned', 'Pin a link and it shows up here and in the bar at the top.', []));
+    return;
+  }
+  sections.forEach(s => main.appendChild(buildSection(s)));
+}
+
+function emptyState(title, body, buttons){
+  const el = h('div', { class:'empty-state' }, h('strong', { text:title }), h('div', { text:body }));
+  if(buttons.length){
+    const box = h('div', { class:'actions' });
+    buttons.forEach(b => box.appendChild(h('button', { type:'button', class:'btn' + (b.primary ? ' btn-primary' : ''), 'data-act':b.act, text:b.label })));
+    el.appendChild(box);
+  }
+  return el;
+}
+
+function buildSection(s){
+  const items = s.items.slice().sort(byOrder);
+  const collapsed = !!uiState.collapsed[s.key];
+  const sec = h('section', { class:'category' + (collapsed ? ' collapsed' : ''), 'data-container':'sec:' + s.key, 'data-ids':items.map(l => l.id).join(',') });
+  const toggle = h('button', { class:'category-toggle', type:'button', 'data-act':'toggle', 'data-key':s.key, 'aria-expanded':String(!collapsed) },
+    icon('chevron-down'), h('span', { text:s.title }), h('span', { class:'category-count', text:String(items.length) }));
+  toggle.querySelector('.icon').classList.add('chevron');
+  sec.appendChild(h('h2', { class:'category-head' }, toggle));
+  if(items.length){
+    const grid = h('div', { class:'grid' });
+    items.forEach(l => grid.appendChild(buildCard(l, { container:'sec:' + s.key, showCategory:!!s.showCategory, reorder:true })));
+    sec.appendChild(grid);
+  }
+  if(!items.length || s.addCat){
+    if(!uiState.pinnedOnly) sec.appendChild(h('button', { type:'button', class:'add-here', 'data-act':'add-in', 'data-cat':s.addCat || '' }, icon('plus'), items.length ? 'Add to ' + s.title : 'Add your first ' + s.title + ' link'));
+  }
+  return sec;
+}
+
+function toolBtn(act, label, iconName, pressed){
+  return h('button', { type:'button', class:'tool', 'data-act':act, 'aria-label':label, title:label, 'aria-pressed':pressed == null ? null : String(pressed) }, icon(iconName));
+}
+function buildTools(link, reorder){
+  return h('div', { class:'card-tools' },
+    toolBtn('pin', link.pinned ? 'Unpin ' + link.title : 'Pin ' + link.title, 'pin', link.pinned),
+    toolBtn('edit', 'Edit ' + link.title, 'pencil'),
+    reorder ? toolBtn('up', 'Move ' + link.title + ' earlier', 'arrow-up') : null,
+    reorder ? toolBtn('down', 'Move ' + link.title + ' later', 'arrow-down') : null);
+}
+/* Tool buttons (4 per card, each with an SVG) are built only when a card is first hovered, focused or opened on touch.
+   With thousands of links this removes ~80% of the render cost, since most cards are never interacted with. */
+function ensureTools(card){
+  if(!card || card.querySelector('.card-tools')) return;
+  const link = findLink(card.dataset.id);
+  if(link) card.appendChild(buildTools(link, card.dataset.reorder === '1'));
+}
+function buildCard(link, o){
+  const tagText = link.tags.length ? link.tags.map(t => '#' + t).join(' ') : '';
+  const meta = [hostOf(link.url), o.showCategory ? link.category : '', tagText].filter(Boolean).join('  ');
+  const drag = o.reorder && !isCoarse;
+  const open = uiState.touchOpenId === link.id;
+  const card = h('div', { class:'card' + (o.topHit ? ' top-hit' : '') + (open ? ' tools-open' : ''), 'data-id':link.id, 'data-container':o.container, 'data-reorder':o.reorder ? '1' : null, draggable:drag ? 'true' : null },
+    h('a', { class:'card-link', href:link.url, target:'_blank', rel:'noopener noreferrer', draggable:'false', title:link.title + ' — ' + link.url },
+      faviconEl(link),
+      h('span', { class:'body' }, h('span', { class:'title', text:link.title }), h('span', { class:'meta', text:meta }))));
+  if(isCoarse){
+    const more = toolBtn('more', 'More actions for ' + link.title, 'ellipsis');
+    more.setAttribute('aria-expanded', String(open));
+    card.appendChild(more);
+  }
+  if(open) ensureTools(card);
+  return card;
+}
+document.addEventListener('pointerover', e => { const c = e.target.closest && e.target.closest('.card'); if(c) ensureTools(c); }, { passive:true });
+document.addEventListener('focusin', e => { const c = e.target.closest && e.target.closest('.card'); if(c) ensureTools(c); });
+
+/* ============ Mutations ============ */
+function commit(opts){ saveState(); render(opts); }
+function findLink(id){ return state.links.find(l => l.id === id); }
+
+function togglePin(id){
+  const l = findLink(id); if(!l) return;
+  l.pinned = !l.pinned;
+  if(l.pinned) l.pinOrder = nextPinOrder();
+  normalizeOrders(state.links);
+  commit({ focusId:id });
+}
+/** Reorders `ids` (the visible group) by moving fromId next to toId; reuses the group's own order slots so nothing else shifts. */
+function reorderGroup(ids, fromId, toId, field){
+  const from = ids.indexOf(fromId), to = ids.indexOf(toId);
+  if(from < 0 || to < 0 || from === to) return false;
+  const links = ids.map(findLink).filter(Boolean);
+  if(links.length !== ids.length) return false;
+  const slots = links.map(l => l[field]).sort((a, b) => a - b);
+  const seq = ids.slice(); const [m] = seq.splice(from, 1); seq.splice(to, 0, m);
+  seq.forEach((id, i) => { findLink(id)[field] = slots[i]; });
+  normalizeOrders(state.links);
+  return true;
+}
+function idsOf(containerEl){ return (containerEl.dataset.ids || '').split(',').filter(Boolean); }
+function fieldFor(container){ return container === 'pinned' ? 'pinOrder' : 'order'; }
+function moveLink(id, dir, containerEl){
+  if(!containerEl) return;
+  const ids = idsOf(containerEl); const i = ids.indexOf(id); const j = i + dir;
+  if(i < 0 || j < 0 || j >= ids.length) return;
+  if(reorderGroup(ids, id, ids[j], fieldFor(containerEl.dataset.container))) commit({ focusId:id });
+}
+function deleteLink(id){
+  const idx = state.links.findIndex(l => l.id === id); if(idx < 0) return;
+  const [removed] = state.links.splice(idx, 1);
+  lastDeleted = { link:removed, idx };
+  normalizeOrders(state.links);
+  commit();
+  toast(`Deleted “${removed.title}”.`, 'success', { action:{ label:'Undo', run:() => {
+    if(!lastDeleted) return;
+    state.links.splice(Math.min(lastDeleted.idx, state.links.length), 0, lastDeleted.link);
+    lastDeleted = null; normalizeOrders(state.links); commit();
+  } } });
+}
+
+/* ============ Event delegation (one listener each instead of hundreds) ============ */
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if(!btn) return;
+  const act = btn.dataset.act;
+  const card = btn.closest('[data-id]');
+  const id = card && card.dataset.id;
+  switch(act){
+    case 'chip': uiState.activeCategory = btn.dataset.cat; render(); break;
+    case 'toggle': uiState.collapsed[btn.dataset.key] = !uiState.collapsed[btn.dataset.key]; saveCollapsed(); render(); break;
+    case 'add': openModal(null); break;
+    case 'add-in': openModal(null, btn.dataset.cat || null); break;
+    case 'starter': addStarterLinks(); break;
+    case 'pin': togglePin(id); break;
+    case 'edit': openModal(findLink(id)); break;
+    case 'up': moveLink(id, -1, card.closest('[data-ids]')); break;
+    case 'down': moveLink(id, 1, card.closest('[data-ids]')); break;
+    case 'more': ensureTools(card); uiState.touchOpenId = uiState.touchOpenId === id ? null : id; render({ focusId:id }); break;
+  }
+});
+// Keyboard reordering for everyone: Alt+↑ / Alt+↓ on a focused card.
+document.addEventListener('keydown', e => {
+  if(!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  const card = e.target.closest && e.target.closest('.card[data-id], .pinned-card[data-id]');
+  if(!card || !canReorderHere()) return;
+  e.preventDefault();
+  moveLink(card.dataset.id, e.key === 'ArrowUp' ? -1 : 1, card.closest('[data-ids]'));
+});
+
+/* Desktop drag & drop (touch uses the move buttons instead, because HTML5 DnD is unreliable there) */
+let dragCtx = null;
+document.addEventListener('dragstart', e => {
+  const card = e.target.closest && e.target.closest('[data-id][draggable="true"]');
+  if(!card){ return; }
+  const container = card.closest('[data-ids]');
+  if(!container){ e.preventDefault(); return; }
+  dragCtx = { id:card.dataset.id, key:card.dataset.container, container };
+  card.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try{ e.dataTransfer.setData('text/plain', card.dataset.id); }catch(err){}
+});
+document.addEventListener('dragover', e => {
+  if(!dragCtx) return;
+  const card = e.target.closest && e.target.closest('[data-id]');
+  if(card && card.dataset.container === dragCtx.key && card.dataset.id !== dragCtx.id){
+    e.preventDefault();
+    document.querySelectorAll('.drop-target').forEach(n => { if(n !== card) n.classList.remove('drop-target'); });
+    card.classList.add('drop-target');
+  }
+});
+document.addEventListener('drop', e => {
+  if(!dragCtx) return;
+  const card = e.target.closest && e.target.closest('[data-id]');
+  if(card && card.dataset.container === dragCtx.key){
+    e.preventDefault();
+    if(reorderGroup(idsOf(dragCtx.container), dragCtx.id, card.dataset.id, fieldFor(dragCtx.key))) commit();
+  }
+});
+document.addEventListener('dragend', () => {
+  dragCtx = null;
+  document.querySelectorAll('.dragging,.drop-target').forEach(n => n.classList.remove('dragging', 'drop-target'));
+});
+
+/* ============ Add / Edit dialog ============ */
+const linkDialog = document.getElementById('link-dialog');
+const $ = id => document.getElementById(id);
+
+function populateCategorySelect(current){
+  const sel = $('input-category'); sel.textContent = '';
+  const cats = allCategories();
+  cats.forEach(c => sel.appendChild(h('option', { value:c, text:c })));
+  sel.appendChild(h('option', { value:'__new__', text:'+ New category…' }));
+  sel.value = cats.includes(current) ? current : cats[0];
+  $('field-new-category').hidden = true;
+}
+$('input-category').addEventListener('change', e => {
+  $('field-new-category').hidden = e.target.value !== '__new__';
+  if(e.target.value === '__new__') $('input-new-category').focus();
+});
+function clearFieldErrors(){ ['field-title','field-url','field-new-category'].forEach(i => $(i).classList.remove('invalid')); }
+
+function openModal(link, presetCategory){
+  uiState.editingId = link ? link.id : null;
+  $('modal-title').textContent = link ? 'Edit link' : 'Add link';
+  $('input-title').value = link ? link.title : '';
+  $('input-url').value = link ? link.url : '';
+  $('input-tags').value = link ? link.tags.join(', ') : '';
+  $('input-new-category').value = '';
+  populateCategorySelect(link ? link.category : (presetCategory || (uiState.activeCategory !== 'All' ? uiState.activeCategory : null)));
+  $('delete-link-btn').hidden = !link;
+  clearFieldErrors();
+  if(!linkDialog.open) linkDialog.showModal();
+  $('input-title').focus();
+}
+function closeModal(){ if(linkDialog.open) linkDialog.close(); uiState.editingId = null; }
+$('add-link-btn').addEventListener('click', () => openModal(null));
+$('cancel-modal-btn').addEventListener('click', closeModal);
+linkDialog.addEventListener('click', e => { if(e.target === linkDialog) closeModal(); });   // click on backdrop
+linkDialog.addEventListener('close', () => { uiState.editingId = null; });
+$('delete-link-btn').addEventListener('click', () => { const id = uiState.editingId; closeModal(); if(id) deleteLink(id); });
+
+$('link-form').addEventListener('submit', e => {
+  e.preventDefault();
+  clearFieldErrors();
+  const url = normalizeUrl($('input-url').value);
+  if(!url) $('field-url').classList.add('invalid');
+  let title = cleanText($('input-title').value, LIMITS.title);
+  if(!title && url) title = hostOf(url);                         // blank title → use the site name instead of blocking the user
+  if(!title) $('field-title').classList.add('invalid');
+  let category = $('input-category').value;
+  if(category === '__new__'){
+    const c = cleanText($('input-new-category').value, LIMITS.category);
+    if(!c){ $('field-new-category').classList.add('invalid'); }
+    category = c ? canonicalCategory(c) : null;
+  }
+  if(!url || !title || !category){ (linkDialog.querySelector('.invalid input') || $('input-url')).focus(); return; }
+  const tags = sanitizeTags($('input-tags').value);
+
+  const dupe = state.links.find(l => urlKey(l.url) === urlKey(url) && l.id !== uiState.editingId);
+  if(uiState.editingId){
+    const l = findLink(uiState.editingId);
+    if(l){
+      if(l.category !== category) l.order = nextOrder();
+      Object.assign(l, { title, url, category, tags });
+      normalizeOrders(state.links);
+    }
+    toast('Link updated.', 'success');
+  }else{
+    if(state.links.length >= LIMITS.links){ toast(`Launchpad holds up to ${LIMITS.links} links.`, 'error'); return; }
+    state.links.push({ id:uid(), title, url, category, tags, pinned:false, order:nextOrder(), pinOrder:0 });
+    toast(dupe ? `Added. Heads up: this address is already saved in “${dupe.category}”.` : 'Link added.', 'success');
+  }
+  commit(); closeModal();
+});
+
+function addStarterLinks(){
+  const used = new Set(state.links.map(l => urlKey(l.url)));
+  STARTER_LINKS.forEach(([title, url, category]) => {
+    if(used.has(urlKey(url))) return;
+    state.links.push({ id:uid(), title, url, category, tags:[], pinned:false, order:nextOrder(), pinOrder:0 });
+  });
+  commit(); toast('Starter links added. Edit or delete any you do not want.', 'success');
+}
+
+/* ============ Search box & global shortcuts ============ */
+const searchInput = $('search-input');
+let searchTimer = 0;
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { uiState.search = searchInput.value; render(); }, 60);
+});
+searchInput.addEventListener('keydown', e => {
+  if(e.key === 'Escape'){ searchInput.value = ''; uiState.search = ''; render(); searchInput.blur(); }
+  else if(e.key === 'Enter'){
+    const top = searchResults(searchInput.value)[0];
+    if(top){ e.preventDefault(); window.open(top.url, '_blank', 'noopener,noreferrer'); }
+  }
+});
+const TEXT_INPUT_TYPES = new Set(['text','search','url','email','tel','password','number','']);
+function isTypingContext(el){
+  if(!el) return false;
+  const tag = el.tagName;
+  if(tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return true;
+  return tag === 'INPUT' && TEXT_INPUT_TYPES.has((el.getAttribute('type') || '').toLowerCase());
+}
+document.addEventListener('keydown', e => {
+  if(e.defaultPrevented || e.isComposing) return;
+  if(isTypingContext(document.activeElement) || document.querySelector('dialog[open]')) return;  // never hijack typing or a modal
+  const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey;
+  const cmdK = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k';
+  if(slash || cmdK){ e.preventDefault(); searchInput.focus(); searchInput.select(); }
+});
+
+$('pinned-only-toggle').addEventListener('click', e => {
+  uiState.pinnedOnly = !uiState.pinnedOnly;
+  e.currentTarget.setAttribute('aria-pressed', String(uiState.pinnedOnly));
+  render();
+});
+
+/* ============ Import / Export ============ */
+function localStamp(){
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+$('export-btn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ version:1, exportedAt:new Date().toISOString(), links:state.links }, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `launchpad-export-${localStamp()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);       // revoking immediately can cancel the download in some browsers
+});
+$('import-btn').addEventListener('click', () => $('import-file').click());
+$('import-file').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if(!file) return;
+  if(file.size > LIMITS.importBytes){ toast('That file is larger than 5 MB — it is not a Launchpad export.', 'error'); return; }
+  let parsed;
+  try{ parsed = JSON.parse(await file.text()); }catch(err){ toast('That file is not valid JSON.', 'error'); return; }
+  const list = Array.isArray(parsed) ? parsed : (parsed && parsed.links);
+  if(!Array.isArray(list)){ toast('That file is not a valid Launchpad export.', 'error'); return; }
+  const { links, dropped } = sanitizeLinks(list);
+  if(!links.length){ toast('No usable links were found in that file.', 'error'); return; }
+  pendingImport = links;
+  $('import-summary').textContent = `Found ${links.length} valid link${links.length === 1 ? '' : 's'}` + (dropped ? ` (${dropped} skipped: invalid or unsafe address).` : '.') +
+    ` You currently have ${state.links.length}. Replace everything, or merge and keep what you have?`;
+  $('import-dialog').showModal();
+});
+$('import-cancel').addEventListener('click', () => { pendingImport = null; $('import-dialog').close(); });
+$('import-replace').addEventListener('click', () => {
+  if(!pendingImport) return;
+  state = { version:1, links:normalizeOrders(pendingImport) };
+  const n = pendingImport.length; pendingImport = null; $('import-dialog').close();
+  commit(); toast(`Imported ${n} link${n === 1 ? '' : 's'}.`, 'success');
+});
+$('import-merge').addEventListener('click', () => {
+  if(!pendingImport) return;
+  const seen = new Set(state.links.map(l => urlKey(l.url)));
+  const ids = new Set(state.links.map(l => l.id));
+  let added = 0;
+  pendingImport.forEach(l => {
+    if(seen.has(urlKey(l.url)) || state.links.length >= LIMITS.links) return;
+    seen.add(urlKey(l.url));
+    if(ids.has(l.id)) l.id = uid() + added;
+    ids.add(l.id);
+    l.order = nextOrder(); l.pinOrder = l.pinned ? nextPinOrder() : 0;
+    state.links.push(l); added++;
+  });
+  pendingImport = null; $('import-dialog').close();
+  normalizeOrders(state.links); commit();
+  toast(added ? `Merged ${added} new link${added === 1 ? '' : 's'}.` : 'Nothing new to merge — every link was already saved.', 'success');
+});
+$('import-dialog').addEventListener('click', e => { if(e.target.id === 'import-dialog'){ pendingImport = null; e.target.close(); } });
+
+/* ============ Cross-tab sync, last-resort error handling ============ */
+window.addEventListener('storage', e => {       // another tab changed the data: pick it up instead of overwriting it later
+  if(e.key === STORAGE_KEY){ state = loadState(); render(); }
+});
+window.addEventListener('error', e => { console.error(e.error || e.message); });
+window.addEventListener('unhandledrejection', e => { console.error(e.reason); });
+
+/* ============ Init ============ */
+paintThemeButton();
+paintIcons(document);
+renderNow();
+})();
+</script>
+</body>
+</html>
